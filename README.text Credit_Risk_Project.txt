@@ -1,1 +1,0 @@
-"A project to predict credit risk using Python (ETL) and MySQL"
