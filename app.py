@@ -6,7 +6,8 @@ Streamlit front-end for the Credit Risk Predictor.
 A loan officer enters an applicant's details, and the app returns:
   * the model's estimated probability of default,
   * an APPROVE / DECLINE decision using the cost-optimised threshold, and
-  * a SHAP explanation showing which factors pushed the decision each way.
+  * a plain-English explanation of which factors drove the decision (exact for
+    the linear model; SHAP-based for tree models when `shap` is installed).
 
 Run with:
     streamlit run app.py
@@ -59,30 +60,69 @@ def build_inputs(meta: dict) -> pd.DataFrame:
     return pd.DataFrame([values])[feats["order"]]
 
 
-def explain(pipeline, background: pd.DataFrame, x_row: pd.DataFrame, model_name: str):
-    """Return (feature_names, shap_values) for the single applicant."""
-    import shap
+def _pretty_label(raw: str, meta: dict, x_row: pd.DataFrame) -> str:
+    """Turn an encoded feature name (e.g. 'num__Credit_amount',
+    'cat__Purpose_car') into a human-readable label that includes the
+    applicant's actual value."""
+    body = raw.split("__", 1)[-1]
+    feats = meta["features"]
 
+    # Numeric feature: show the applicant's value.
+    if body in feats["numeric"]:
+        val = x_row.iloc[0][body]
+        val = int(val) if float(val).is_integer() else round(float(val), 2)
+        return f"{body.replace('_', ' ')} = {val}"
+
+    # Categorical one-hot: recover the column and its selected value.
+    for col, options in feats["categorical"].items():
+        for opt in options:
+            if body == f"{col}_{opt}":
+                return f"{col.replace('_', ' ')} = {opt}"
+    return body.replace("_", " ")
+
+
+def local_contributions(pipeline, x_row: pd.DataFrame, meta: dict,
+                        background: pd.DataFrame):
+    """Return a DataFrame [label, contribution] explaining THIS applicant.
+
+    For a linear model the contribution of each feature to the risk score
+    (log-odds of default) is exactly coef * value - an exact, dependency-free
+    explanation. For a tree model we use SHAP if available, else fall back to
+    global feature importances (clearly flagged as approximate).
+    """
     pre = pipeline.named_steps["prep"]
     clf = pipeline.named_steps["clf"]
-    feat_names = pre.get_feature_names_out()
+    names = pre.get_feature_names_out()
+    x_t = pre.transform(x_row)
+    x_t = (x_t.toarray() if hasattr(x_t, "toarray") else x_t)[0]
 
-    X_bg = pre.transform(background)
-    X_bg = X_bg.toarray() if hasattr(X_bg, "toarray") else X_bg
-    X_row = pre.transform(x_row)
-    X_row = X_row.toarray() if hasattr(X_row, "toarray") else X_row
+    approximate = False
+    if hasattr(clf, "coef_"):                      # linear model: exact
+        contrib = clf.coef_[0] * x_t
+    else:                                          # tree model
+        try:
+            import shap
+            X_bg = pre.transform(background)
+            X_bg = X_bg.toarray() if hasattr(X_bg, "toarray") else X_bg
+            sv = shap.TreeExplainer(clf).shap_values(
+                x_t.reshape(1, -1)
+            )
+            if isinstance(sv, list):
+                sv = sv[1]
+            elif getattr(sv, "ndim", 2) == 3:
+                sv = sv[:, :, 1]
+            contrib = np.asarray(sv)[0]
+        except Exception:
+            contrib = clf.feature_importances_     # unsigned, global
+            approximate = True
 
-    if model_name == "RandomForest":
-        explainer = shap.TreeExplainer(clf)
-        sv = explainer.shap_values(X_row)
-        if isinstance(sv, list):
-            sv = sv[1]
-        elif getattr(sv, "ndim", 2) == 3:
-            sv = sv[:, :, 1]
-    else:
-        explainer = shap.LinearExplainer(clf, X_bg)
-        sv = explainer.shap_values(X_row)
-    return feat_names, np.asarray(sv)[0]
+    df = pd.DataFrame({
+        "label": [_pretty_label(n, meta, x_row) for n in names],
+        "contribution": contrib,
+    })
+    # Drop inactive one-hot columns (zero contribution) for readability.
+    df = df[df["contribution"].abs() > 1e-9].copy()
+    return df, approximate
 
 
 def main():
@@ -122,20 +162,42 @@ def main():
         else:
             c2.success(f"Decision: {decision}")
 
-        st.subheader("Why? (SHAP contributions)")
+        st.subheader("Why this decision?")
         try:
-            names, sv = explain(pipeline, background, x_row, meta["model"])
-            contrib = (
-                pd.DataFrame({"feature": names, "shap_value": sv})
-                .assign(abs_val=lambda d: d["shap_value"].abs())
-                .sort_values("abs_val", ascending=False)
-                .head(10)
-                .set_index("feature")["shap_value"]
+            df, approximate = local_contributions(pipeline, x_row, meta, background)
+
+            up = df[df["contribution"] > 0].sort_values(
+                "contribution", ascending=False).head(4)
+            down = df[df["contribution"] < 0].sort_values(
+                "contribution").head(4)
+
+            verb = "declined" if decision == "DECLINE" else "approved"
+            st.markdown(
+                f"This applicant was **{verb}** with an estimated **{proba:.1%}** "
+                f"chance of default (decision cutoff {threshold:.0%})."
             )
-            st.bar_chart(contrib)
+
+            if not up.empty:
+                st.markdown("**Factors that increased the assessed risk:**")
+                st.markdown("\n".join(f"- {r}" for r in up["label"]))
+            if not down.empty:
+                st.markdown("**Factors that reduced the assessed risk:**")
+                st.markdown("\n".join(f"- {r}" for r in down["label"]))
+
+            st.markdown("**Contribution to the risk score**")
+            chart = (
+                pd.concat([up, down])
+                .set_index("label")["contribution"]
+                .sort_values()
+            )
+            st.bar_chart(chart)
             st.caption(
-                "Positive values push the applicant toward higher default risk; "
-                "negative values toward lower risk."
+                "Bars to the right push the applicant toward higher default "
+                "risk; bars to the left toward lower risk. "
+                + ("(Approximate: global feature importances - install `shap` "
+                   "for exact per-applicant values on this model.)"
+                   if approximate else
+                   "(Exact contributions to the model's log-odds.)")
             )
         except Exception as e:
             st.info(f"Explanation unavailable: {e}")
