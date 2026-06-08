@@ -52,6 +52,13 @@ DISPLAY_NAMES = {
     "Job": "Job skill level (0-3)",
 }
 
+# Tooltip text shown via the "?" icon next to a field.
+HELP_TEXTS = {
+    "Job": "Skill-level code: 0 = unskilled/non-resident, "
+           "1 = unskilled resident, 2 = skilled, "
+           "3 = highly skilled/management.",
+}
+
 
 def display_name(col: str) -> str:
     return DISPLAY_NAMES.get(col, col.replace("_", " "))
@@ -65,6 +72,7 @@ def build_inputs(meta: dict) -> pd.DataFrame:
     feats = meta["features"]
     for i, name in enumerate(feats["order"]):
         col = cols[i % 2]
+        help_text = HELP_TEXTS.get(name)
         if name in feats["numeric"]:
             spec = feats["numeric"][name]
             if spec.get("integer"):
@@ -76,6 +84,7 @@ def build_inputs(meta: dict) -> pd.DataFrame:
                     value=int(round(spec["median"])),
                     step=1,
                     format="%d",
+                    help=help_text,
                 )
             else:
                 values[name] = col.number_input(
@@ -83,10 +92,11 @@ def build_inputs(meta: dict) -> pd.DataFrame:
                     min_value=float(spec["min"]),
                     max_value=float(spec["max"]),
                     value=float(spec["median"]),
+                    help=help_text,
                 )
         else:
             options = feats["categorical"][name]
-            values[name] = col.selectbox(display_name(name), options)
+            values[name] = col.selectbox(display_name(name), options, help=help_text)
     return pd.DataFrame([values])[feats["order"]]
 
 
