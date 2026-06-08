@@ -173,7 +173,8 @@ def save_confusion(y_true, y_pred, path: Path) -> None:
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
-def train(source: str, csv_path: str, target: str, positive_label: str) -> None:
+def train(source: str, csv_path: str, target: str, positive_label: str,
+          drop: list[str] | None = None) -> None:
     from etl import fetch_data
 
     df = fetch_data(source=source, csv_path=csv_path)
@@ -185,6 +186,13 @@ def train(source: str, csv_path: str, target: str, positive_label: str) -> None:
     # Encode the target so the positive class (the risky event) == 1.
     y = (df[target].astype(str).str.lower() == positive_label.lower()).astype(int)
     X = df.drop(columns=[target])
+
+    # Drop protected/forbidden attributes (e.g. Sex/Gender) so the model never
+    # bases credit decisions on them - a fairness and compliance requirement.
+    drop_cols = [c for c in (drop or []) if c in X.columns]
+    if drop_cols:
+        X = X.drop(columns=drop_cols)
+        print(f"Dropped excluded feature(s): {drop_cols}")
     print(f"Loaded {len(df)} rows | positive (bad) rate = {y.mean():.1%}")
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -245,10 +253,16 @@ def train(source: str, csv_path: str, target: str, positive_label: str) -> None:
     # Feature metadata drives the Streamlit input form.
     feature_meta = {"numeric": {}, "categorical": {}, "order": list(X.columns)}
     for c in numeric:
+        col = X[c]
+        # Flag integer-valued columns so the app renders whole-number steppers.
+        is_int = pd.api.types.is_integer_dtype(col) or bool(
+            (col.dropna() % 1 == 0).all()
+        )
         feature_meta["numeric"][c] = {
-            "min": float(X[c].min()),
-            "max": float(X[c].max()),
-            "median": float(X[c].median()),
+            "min": float(col.min()),
+            "max": float(col.max()),
+            "median": float(col.median()),
+            "integer": is_int,
         }
     for c in categorical:
         feature_meta["categorical"][c] = sorted(X[c].astype(str).unique().tolist())
@@ -292,9 +306,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--target", default="Risk", help="Target column name.")
     p.add_argument("--positive-label", default="bad",
                    help="Value of the target that denotes the risky/default class.")
+    p.add_argument("--drop", default="Sex,Gender",
+                   help="Comma-separated feature columns to exclude from the "
+                        "model (default drops protected attributes Sex,Gender).")
     return p.parse_args()
 
 
 if __name__ == "__main__":
     a = parse_args()
-    train(a.source, a.csv, a.target, a.positive_label)
+    drop = [c.strip() for c in a.drop.split(",") if c.strip()]
+    train(a.source, a.csv, a.target, a.positive_label, drop=drop)

@@ -2,13 +2,13 @@
   "model": "LogisticRegression",
   "target": "Risk",
   "positive_label": "bad",
-  "threshold": 0.30999999999999994,
+  "threshold": 0.3449999999999999,
   "cv_roc_auc": {
-    "LogisticRegression": 0.7440550595238095,
-    "RandomForest": 0.7339918154761904
+    "LogisticRegression": 0.739546130952381,
+    "RandomForest": 0.72765625
   },
-  "test_roc_auc": 0.7614285714285715,
-  "test_pr_auc": 0.6131596262147484,
+  "test_roc_auc": 0.7661904761904763,
+  "test_pr_auc": 0.6065050708376658,
   "cost_fn": 5.0,
   "cost_fp": 1.0,
   "features": {
@@ -16,29 +16,29 @@
       "Age": {
         "min": 19.0,
         "max": 75.0,
-        "median": 33.0
+        "median": 33.0,
+        "integer": true
       },
       "Job": {
         "min": 0.0,
         "max": 3.0,
-        "median": 2.0
+        "median": 2.0,
+        "integer": true
       },
       "Credit_amount": {
         "min": 250.0,
         "max": 18424.0,
-        "median": 2319.5
+        "median": 2319.5,
+        "integer": true
       },
       "Duration": {
         "min": 4.0,
         "max": 72.0,
-        "median": 18.0
+        "median": 18.0,
+        "integer": true
       }
     },
     "categorical": {
-      "Sex": [
-        "female",
-        "male"
-      ],
       "Housing": [
         "free",
         "own",
@@ -70,7 +70,6 @@
     },
     "order": [
       "Age",
-      "Sex",
       "Job",
       "Housing",
       "Saving_accounts",
