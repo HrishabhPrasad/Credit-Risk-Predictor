@@ -38,12 +38,23 @@ def load_artifacts():
     if not model_path.exists():
         from train_model import train
         train(source="csv", csv_path="german_credit_data.csv",
-              target="Risk", positive_label="bad")
+              target="Risk", positive_label="bad", drop=["Sex", "Gender"])
     pipeline = joblib.load(model_path)
     with open(MODELS_DIR / "metadata.json") as f:
         meta = json.load(f)
     background = pd.read_csv(MODELS_DIR / "background.csv")
     return pipeline, meta, background
+
+
+# Friendlier / more accurate labels than the raw column names.
+DISPLAY_NAMES = {
+    "Duration": "Duration (in months)",
+    "Job": "Job skill level (0-3)",
+}
+
+
+def display_name(col: str) -> str:
+    return DISPLAY_NAMES.get(col, col.replace("_", " "))
 
 
 def build_inputs(meta: dict) -> pd.DataFrame:
@@ -56,15 +67,26 @@ def build_inputs(meta: dict) -> pd.DataFrame:
         col = cols[i % 2]
         if name in feats["numeric"]:
             spec = feats["numeric"][name]
-            values[name] = col.number_input(
-                name.replace("_", " "),
-                min_value=float(spec["min"]),
-                max_value=float(spec["max"]),
-                value=float(spec["median"]),
-            )
+            if spec.get("integer"):
+                # Whole-number stepper (e.g. Job is 0,1,2,3 - no decimals).
+                values[name] = col.number_input(
+                    display_name(name),
+                    min_value=int(spec["min"]),
+                    max_value=int(spec["max"]),
+                    value=int(round(spec["median"])),
+                    step=1,
+                    format="%d",
+                )
+            else:
+                values[name] = col.number_input(
+                    display_name(name),
+                    min_value=float(spec["min"]),
+                    max_value=float(spec["max"]),
+                    value=float(spec["median"]),
+                )
         else:
             options = feats["categorical"][name]
-            values[name] = col.selectbox(name.replace("_", " "), options)
+            values[name] = col.selectbox(display_name(name), options)
     return pd.DataFrame([values])[feats["order"]]
 
 
@@ -79,13 +101,13 @@ def _pretty_label(raw: str, meta: dict, x_row: pd.DataFrame) -> str:
     if body in feats["numeric"]:
         val = x_row.iloc[0][body]
         val = int(val) if float(val).is_integer() else round(float(val), 2)
-        return f"{body.replace('_', ' ')} = {val}"
+        return f"{display_name(body)} = {val}"
 
     # Categorical one-hot: recover the column and its selected value.
     for col, options in feats["categorical"].items():
         for opt in options:
             if body == f"{col}_{opt}":
-                return f"{col.replace('_', ' ')} = {opt}"
+                return f"{display_name(col)} = {opt}"
     return body.replace("_", " ")
 
 
