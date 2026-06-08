@@ -31,7 +31,15 @@ MODELS_DIR = Path("models")
 
 @st.cache_resource
 def load_artifacts():
-    pipeline = joblib.load(MODELS_DIR / "credit_risk_model.joblib")
+    model_path = MODELS_DIR / "credit_risk_model.joblib"
+    # Safety net for fresh deployments: if the model artifact is missing, train
+    # it once from the bundled CSV (no database needed). Cached, so this runs at
+    # most once per container.
+    if not model_path.exists():
+        from train_model import train
+        train(source="csv", csv_path="german_credit_data.csv",
+              target="Risk", positive_label="bad")
+    pipeline = joblib.load(model_path)
     with open(MODELS_DIR / "metadata.json") as f:
         meta = json.load(f)
     background = pd.read_csv(MODELS_DIR / "background.csv")
