@@ -52,11 +52,28 @@ DISPLAY_NAMES = {
     "Job": "Job skill level (0-3)",
 }
 
-# Tooltip text shown via the "?" icon next to a field.
+# Tooltip text shown via the "?" icon next to a field. Definitions follow the
+# original UCI German Credit documentation; balances are in Deutsche Marks (DM),
+# the dataset's pre-Euro currency.
 HELP_TEXTS = {
+    "Age": "Applicant's age, in years.",
     "Job": "Skill-level code: 0 = unskilled/non-resident, "
            "1 = unskilled resident, 2 = skilled, "
            "3 = highly skilled/management.",
+    "Housing": "Housing situation: 'own' = owns the home, 'rent' = rents, "
+               "'free' = lives rent-free (e.g. with family or employer-provided).",
+    "Saving_accounts": "Balance in savings account/bonds (Deutsche Marks): "
+                       "little = under 100 DM, moderate = 100-500 DM, "
+                       "quite rich = 500-1000 DM, rich = 1000+ DM, "
+                       "unknown = no or undisclosed savings account.",
+    "Checking_account": "Balance in current/checking account (Deutsche Marks): "
+                        "little = below 0 DM (overdrawn), moderate = 0-200 DM, "
+                        "rich = 200+ DM or salary credited for 1+ year, "
+                        "unknown = no or undisclosed checking account.",
+    "Credit_amount": "Requested loan amount, in Deutsche Marks (DM).",
+    "Duration": "Loan repayment term, in months.",
+    "Purpose": "Reason for the loan (e.g. car, radio/TV, furniture, "
+               "education, business, repairs).",
 }
 
 
