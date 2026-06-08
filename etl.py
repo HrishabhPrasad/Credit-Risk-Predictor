@@ -57,8 +57,16 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
     unnamed = [c for c in df.columns if str(c).startswith("Unnamed") or c == ""]
     df = df.drop(columns=unnamed, errors="ignore")
     df.columns = df.columns.str.strip().str.replace(" ", "_").str.replace("/", "_")
-    # Treat literal "NA" strings and real NaNs alike.
-    df = df.replace("NA", pd.NA).fillna("unknown")
+    # Treat literal "NA" strings as missing.
+    df = df.replace("NA", pd.NA)
+    # Fill by column type: median for numerics, an explicit 'unknown' label for
+    # categoricals (missingness is itself informative for credit risk). This
+    # keeps numeric columns numeric when you bring your own dataset.
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            df[col] = df[col].fillna(df[col].median())
+        else:
+            df[col] = df[col].fillna("unknown")
     return df
 
 
