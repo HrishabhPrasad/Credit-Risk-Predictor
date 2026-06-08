@@ -147,8 +147,18 @@ def main():
 
     with st.sidebar:
         st.header("Model")
-        st.metric("Algorithm", meta["model"])
-        st.metric("Test ROC-AUC", f"{meta['test_roc_auc']:.3f}")
+        st.markdown("**Algorithm**")
+        st.markdown(
+            f"<span style='font-size:1rem'>{meta['model']}</span>",
+            unsafe_allow_html=True,
+        )
+        st.metric(
+            "Test ROC-AUC", f"{meta['test_roc_auc']:.3f}",
+            help="Probability the model ranks a random defaulter as riskier "
+                 "than a random non-defaulter. 0.5 = coin flip, 1.0 = perfect. "
+                 f"{meta['test_roc_auc']:.2f} means it gets that ordering right "
+                 f"~{meta['test_roc_auc']*100:.0f}% of the time on unseen data.",
+        )
         st.metric("Decision threshold", f"{threshold:.2f}")
         st.caption(
             f"Threshold is cost-optimised: a false negative (approving a "
