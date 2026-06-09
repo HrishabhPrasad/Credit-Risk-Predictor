@@ -3,34 +3,32 @@ train_model.py
 ==============
 End-to-end training pipeline for the Credit Risk Predictor.
 
-What this does that the original script did not
------------------------------------------------
-1.  Correct preprocessing. Nominal categories (Housing, Purpose, ...) are
-    one-hot encoded instead of label-encoded, removing the false ordinality
-    the original code introduced (e.g. own=0 < rent=2). Numerics are scaled.
-2.  Uses the FULL feature set and the FULL dataset (the original silently
-    dropped every loan that was not 'car' or 'radio/TV').
-3.  Handles class imbalance with `class_weight="balanced"` instead of letting
-    the model collapse into the "paranoid banker" that rejects everyone.
-4.  Cost-sensitive decision threshold. In the German Credit cost convention,
-    approving a bad borrower (false negative) is 5x as expensive as rejecting
-    a good one (false positive). We pick the threshold that minimises expected
-    cost on cross-validated predictions, not the naive 0.5 cutoff.
+Key properties
+--------------
+1.  Correct preprocessing. Nominal categories (education, self_employed, ...)
+    are one-hot encoded instead of label-encoded, avoiding false ordinality.
+    Numerics are scaled.
+2.  Uses the full feature set (identifier columns and protected attributes are
+    dropped via --drop).
+3.  Handles class imbalance with `class_weight="balanced"`.
+4.  Cost-sensitive decision threshold. Wrongly approving an applicant who
+    should be declined (false negative) is treated as 5x as expensive as
+    wrongly declining a sound applicant (false positive). We pick the threshold
+    that minimises expected cost on cross-validated predictions, not the naive
+    0.5 cutoff.
 5.  Honest evaluation: stratified K-fold ROC-AUC, plus test-set ROC-AUC,
     PR-AUC, confusion matrix and a classification report at the tuned cutoff.
 6.  SHAP explainability so every prediction can be justified - the thing
     interviewers actually probe.
 
-The script is dataset-agnostic: point it at the German benchmark or at the
-synthetic Indian dataset (see generate_indian_dataset.py) and it adapts the
-preprocessing to whatever numeric/categorical columns are present.
+The script is dataset-agnostic: it adapts the preprocessing to whatever
+numeric/categorical columns are present, so you can point it at any tabular
+credit dataset via --target / --positive-label.
 
 Usage
 -----
-    python train_model.py                       # MySQL source, German data
+    python train_model.py                       # MySQL source (primary)
     python train_model.py --source csv          # CSV fallback, no DB needed
-    python train_model.py --source csv --csv indian_credit_data.csv \
-        --positive-label bad
 """
 
 from __future__ import annotations
@@ -159,8 +157,8 @@ def save_confusion(y_true, y_pred, path: Path) -> None:
     plt.figure(figsize=(4.5, 4))
     sns.heatmap(
         cm, annot=True, fmt="d", cmap="Blues",
-        xticklabels=["good (0)", "bad (1)"],
-        yticklabels=["good (0)", "bad (1)"],
+        xticklabels=["approve (0)", "decline (1)"],
+        yticklabels=["approve (0)", "decline (1)"],
     )
     plt.xlabel("Predicted")
     plt.ylabel("Actual")
@@ -173,7 +171,8 @@ def save_confusion(y_true, y_pred, path: Path) -> None:
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
-def train(source: str, csv_path: str, target: str, positive_label: str) -> None:
+def train(source: str, csv_path: str, target: str, positive_label: str,
+          drop: list[str] | None = None) -> None:
     from etl import fetch_data
 
     df = fetch_data(source=source, csv_path=csv_path)
@@ -185,6 +184,13 @@ def train(source: str, csv_path: str, target: str, positive_label: str) -> None:
     # Encode the target so the positive class (the risky event) == 1.
     y = (df[target].astype(str).str.lower() == positive_label.lower()).astype(int)
     X = df.drop(columns=[target])
+
+    # Drop protected/forbidden attributes (e.g. Sex/Gender) so the model never
+    # bases credit decisions on them - a fairness and compliance requirement.
+    drop_cols = [c for c in (drop or []) if c in X.columns]
+    if drop_cols:
+        X = X.drop(columns=drop_cols)
+        print(f"Dropped excluded feature(s): {drop_cols}")
     print(f"Loaded {len(df)} rows | positive (bad) rate = {y.mean():.1%}")
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -232,10 +238,10 @@ def train(source: str, csv_path: str, target: str, positive_label: str) -> None:
     print(f"\nTest ROC-AUC = {test_auc:.3f} | PR-AUC = {test_ap:.3f}")
     print("\n--- Default threshold (0.50) ---")
     print(classification_report(y_test, pred_default,
-                                target_names=["good", "bad"]))
+                                target_names=["approve", "decline"]))
     print(f"--- Tuned threshold ({threshold:.2f}) ---")
     print(classification_report(y_test, pred_tuned,
-                                target_names=["good", "bad"]))
+                                target_names=["approve", "decline"]))
 
     # --- Artifacts ------------------------------------------------------- #
     MODELS_DIR.mkdir(exist_ok=True)
@@ -245,10 +251,16 @@ def train(source: str, csv_path: str, target: str, positive_label: str) -> None:
     # Feature metadata drives the Streamlit input form.
     feature_meta = {"numeric": {}, "categorical": {}, "order": list(X.columns)}
     for c in numeric:
+        col = X[c]
+        # Flag integer-valued columns so the app renders whole-number steppers.
+        is_int = pd.api.types.is_integer_dtype(col) or bool(
+            (col.dropna() % 1 == 0).all()
+        )
         feature_meta["numeric"][c] = {
-            "min": float(X[c].min()),
-            "max": float(X[c].max()),
-            "median": float(X[c].median()),
+            "min": float(col.min()),
+            "max": float(col.max()),
+            "median": float(col.median()),
+            "integer": is_int,
         }
     for c in categorical:
         feature_meta["categorical"][c] = sorted(X[c].astype(str).unique().tolist())
@@ -287,14 +299,18 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train the credit risk model.")
     p.add_argument("--source", choices=["mysql", "csv"], default="mysql",
                    help="Data source (default: mysql, the primary pipeline).")
-    p.add_argument("--csv", default="german_credit_data.csv",
+    p.add_argument("--csv", default="loan_approval_dataset.csv",
                    help="CSV path used by the csv source or for MySQL loading.")
-    p.add_argument("--target", default="Risk", help="Target column name.")
-    p.add_argument("--positive-label", default="bad",
-                   help="Value of the target that denotes the risky/default class.")
+    p.add_argument("--target", default="loan_status", help="Target column name.")
+    p.add_argument("--positive-label", default="Rejected",
+                   help="Value of the target that denotes the adverse/risky class.")
+    p.add_argument("--drop", default="loan_id,Loan_ID,id,Sex,Gender",
+                   help="Comma-separated feature columns to exclude from the "
+                        "model (identifiers and protected attributes).")
     return p.parse_args()
 
 
 if __name__ == "__main__":
     a = parse_args()
-    train(a.source, a.csv, a.target, a.positive_label)
+    drop = [c.strip() for c in a.drop.split(",") if c.strip()]
+    train(a.source, a.csv, a.target, a.positive_label, drop=drop)

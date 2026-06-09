@@ -57,6 +57,11 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
     unnamed = [c for c in df.columns if str(c).startswith("Unnamed") or c == ""]
     df = df.drop(columns=unnamed, errors="ignore")
     df.columns = df.columns.str.strip().str.replace(" ", "_").str.replace("/", "_")
+    # Strip stray whitespace from text values (some CSVs pad them, e.g.
+    # " Approved", " Graduate") so encoding and label matching work cleanly.
+    for col in df.columns:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            df[col] = df[col].astype(str).str.strip()
     # Treat literal "NA" strings as missing.
     df = df.replace("NA", pd.NA)
     # Fill by column type: median for numerics, an explicit 'unknown' label for
@@ -70,7 +75,7 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_csv_to_mysql(csv_path: str = "german_credit_data.csv",
+def load_csv_to_mysql(csv_path: str = "loan_approval_dataset.csv",
                       table: str = "loans_raw") -> int:
     """ETL step: read the CSV, clean it, and (re)load it into MySQL.
 
@@ -83,7 +88,7 @@ def load_csv_to_mysql(csv_path: str = "german_credit_data.csv",
 
 
 def fetch_data(source: str = "mysql",
-               csv_path: str = "german_credit_data.csv",
+               csv_path: str = "loan_approval_dataset.csv",
                table: str = "loans_raw") -> pd.DataFrame:
     """Return the analysis-ready DataFrame.
 

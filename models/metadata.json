@@ -1,83 +1,95 @@
 {
-  "model": "LogisticRegression",
-  "target": "Risk",
-  "positive_label": "bad",
-  "threshold": 0.30999999999999994,
+  "model": "RandomForest",
+  "target": "loan_status",
+  "positive_label": "Rejected",
+  "threshold": 0.48499999999999993,
   "cv_roc_auc": {
-    "LogisticRegression": 0.7440550595238095,
-    "RandomForest": 0.7339918154761904
+    "LogisticRegression": 0.9663449156406749,
+    "RandomForest": 0.9972534427724578
   },
-  "test_roc_auc": 0.7614285714285715,
-  "test_pr_auc": 0.6131596262147484,
+  "test_roc_auc": 0.9971051757009672,
+  "test_pr_auc": 0.9961754646172964,
   "cost_fn": 5.0,
   "cost_fp": 1.0,
   "features": {
     "numeric": {
-      "Age": {
-        "min": 19.0,
-        "max": 75.0,
-        "median": 33.0
-      },
-      "Job": {
+      "no_of_dependents": {
         "min": 0.0,
-        "max": 3.0,
-        "median": 2.0
+        "max": 5.0,
+        "median": 3.0,
+        "integer": true
       },
-      "Credit_amount": {
-        "min": 250.0,
-        "max": 18424.0,
-        "median": 2319.5
+      "income_annum": {
+        "min": 200000.0,
+        "max": 9900000.0,
+        "median": 5100000.0,
+        "integer": true
       },
-      "Duration": {
-        "min": 4.0,
-        "max": 72.0,
-        "median": 18.0
+      "loan_amount": {
+        "min": 300000.0,
+        "max": 39500000.0,
+        "median": 14500000.0,
+        "integer": true
+      },
+      "loan_term": {
+        "min": 2.0,
+        "max": 20.0,
+        "median": 10.0,
+        "integer": true
+      },
+      "cibil_score": {
+        "min": 300.0,
+        "max": 900.0,
+        "median": 600.0,
+        "integer": true
+      },
+      "residential_assets_value": {
+        "min": -100000.0,
+        "max": 29100000.0,
+        "median": 5600000.0,
+        "integer": true
+      },
+      "commercial_assets_value": {
+        "min": 0.0,
+        "max": 19400000.0,
+        "median": 3700000.0,
+        "integer": true
+      },
+      "luxury_assets_value": {
+        "min": 300000.0,
+        "max": 39200000.0,
+        "median": 14600000.0,
+        "integer": true
+      },
+      "bank_asset_value": {
+        "min": 0.0,
+        "max": 14700000.0,
+        "median": 4600000.0,
+        "integer": true
       }
     },
     "categorical": {
-      "Sex": [
-        "female",
-        "male"
+      "education": [
+        "Graduate",
+        "Not Graduate"
       ],
-      "Housing": [
-        "free",
-        "own",
-        "rent"
-      ],
-      "Saving_accounts": [
-        "little",
-        "moderate",
-        "quite rich",
-        "rich",
-        "unknown"
-      ],
-      "Checking_account": [
-        "little",
-        "moderate",
-        "rich",
-        "unknown"
-      ],
-      "Purpose": [
-        "business",
-        "car",
-        "domestic appliances",
-        "education",
-        "furniture/equipment",
-        "radio/TV",
-        "repairs",
-        "vacation/others"
+      "self_employed": [
+        "No",
+        "Yes"
       ]
     },
     "order": [
-      "Age",
-      "Sex",
-      "Job",
-      "Housing",
-      "Saving_accounts",
-      "Checking_account",
-      "Credit_amount",
-      "Duration",
-      "Purpose"
+      "no_of_dependents",
+      "education",
+      "self_employed",
+      "income_annum",
+      "loan_amount",
+      "loan_term",
+      "cibil_score",
+      "residential_assets_value",
+      "commercial_assets_value",
+      "luxury_assets_value",
+      "bank_asset_value"
     ]
   }
 }
