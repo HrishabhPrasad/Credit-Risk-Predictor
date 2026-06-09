@@ -1,58 +1,60 @@
 # Credit Risk Predictor
 
-An end-to-end, explainable credit-default risk pipeline. It ingests raw loan
-records into a **MySQL** warehouse, trains an imbalance-aware classifier with a
-**cost-sensitive decision threshold**, explains every prediction with **SHAP**,
-and serves it through an interactive **Streamlit** app.
+An end-to-end, explainable **loan-approval / credit-eligibility** model for the
+Indian lending context. It ingests applicant records into a **MySQL** warehouse,
+trains an imbalance-aware classifier with a **cost-sensitive decision
+threshold**, explains every prediction (CIBIL score, income, assets, …), and
+serves it through an interactive **Streamlit** app.
 
-The pipeline is dataset-agnostic and ships with two datasets:
+**Dataset:** [Loan Approval Prediction Dataset](https://www.kaggle.com/datasets/architsharma01/loan-approval-prediction-dataset)
+(`loan_approval_dataset.csv`) — 4,269 Indian loan applications with CIBIL score,
+annual income, asset values, loan amount/term, and the bank's
+`loan_status` (Approved / Rejected).
 
-| Dataset | File | Source | Use |
-|---|---|---|---|
-| German Credit (benchmark) | `german_credit_data.csv` | Public UCI benchmark | Primary / default |
-| Indian lending context | `indian_credit_data.csv` | **Synthetic** (generated) | Domain-relevance demo |
+> **What the model predicts:** whether an application would be **Approved or
+> Rejected** (eligibility), not real-world default. The target is the lender's
+> historical decision. Frame it as an automated *loan-eligibility* screener.
 
 ---
 
-## Why this is more than a logistic regression
+## Methodology
 
-The original version trained logistic regression on 6 features of a single loan
-purpose and reported 68.55% accuracy - a number dominated by class imbalance. It
-collapsed into a "paranoid banker": 95% recall on bad loans, 12% on good ones.
-This version fixes the methodology:
+- **Correct preprocessing.** Categorical fields (`education`, `self_employed`)
+  are one-hot encoded; numerics are scaled. Identifier columns (`loan_id`) and
+  any protected attributes (`Sex`/`Gender`) are dropped so decisions never rest
+  on them.
+- **Model selection.** Logistic Regression vs. Random Forest, chosen by
+  stratified 5-fold cross-validated ROC-AUC.
+- **Class imbalance** handled with `class_weight="balanced"` (~38% of
+  applications are rejected).
+- **Cost-sensitive threshold.** Wrongly approving an applicant who should be
+  declined is treated as **5x** as costly as wrongly declining a sound one; the
+  threshold minimises expected cost on cross-validated predictions, not the
+  naive 0.50 cutoff.
+- **Explainability.** A SHAP summary (global) plus per-applicant, plain-English
+  factor lists in the app ("CIBIL score = 820 reduced rejection risk").
 
-- **Correct preprocessing.** Nominal categories (Housing, Purpose, ...) are
-  one-hot encoded, not label-encoded - removing the false ordinality
-  (`own=0 < rent=2`) the original code introduced. Numerics are scaled.
-- **Full data.** Uses every loan and the full feature set (the original silently
-  dropped all purposes except `car` / `radio/TV`).
-- **Imbalance handling.** `class_weight="balanced"` instead of letting the
-  majority class dominate.
-- **Cost-sensitive threshold.** Approving a defaulter (false negative) is treated
-  as **5x** as costly as declining a good applicant (false positive) - the
-  documented German Credit cost convention. The decision threshold is chosen to
-  minimise expected cost on cross-validated predictions, not left at a naive 0.50.
-- **Honest evaluation.** Stratified 5-fold CV ROC-AUC for model selection, plus
-  test-set ROC-AUC, PR-AUC, confusion matrix and a full classification report.
-- **Explainability.** SHAP summary (global) and per-applicant contributions (in
-  the app) - the part interviewers actually probe.
+**Result:** test **ROC-AUC ≈ 0.997**.
 
-On the German benchmark this yields **ROC-AUC ≈ 0.76** and, at the cost-tuned
-threshold, **~0.90 recall on defaulters** - a deliberate, defensible tradeoff
-rather than an accidental one.
+> **Honesty note on the score.** This dataset's `loan_status` is almost entirely
+> determined by `cibil_score` (applications below ~550 are nearly always
+> rejected), so it is close to linearly separable and any reasonable model
+> scores very high. Treat the near-perfect accuracy as a property of the data,
+> not evidence of a hard problem solved. The value of the project is the
+> end-to-end, explainable, production-style pipeline — not the headline number.
 
 ---
 
 ## Project layout
 
 ```
-etl.py                     CSV -> MySQL -> DataFrame (CSV fallback for no-DB runs)
-train_model.py             Preprocessing, model selection, threshold tuning, SHAP
-app.py                     Streamlit app: live prediction + SHAP explanation
-generate_indian_dataset.py Synthetic Indian-context dataset generator
-analysis_queries.sql       Exploratory SQL against the warehouse table
-models/                    Saved pipeline + metadata + SHAP background (generated)
-reports/                   Confusion matrix + SHAP summary plots (generated)
+etl.py            CSV -> MySQL -> DataFrame (CSV fallback for no-DB runs)
+train_model.py    Preprocessing, model selection, threshold tuning, SHAP
+app.py            Streamlit app: live prediction + plain-English explanation
+analysis_queries.sql  Exploratory SQL against the warehouse table
+loan_approval_dataset.csv  The dataset
+models/           Saved pipeline + metadata + SHAP background (generated)
+reports/          Confusion matrix + SHAP summary plots (generated)
 ```
 
 ---
@@ -63,23 +65,19 @@ reports/                   Confusion matrix + SHAP summary plots (generated)
 pip install -r requirements.txt
 ```
 
-### Option A - MySQL (primary pipeline)
+### Option A — MySQL (primary pipeline)
 
 ```bash
-# 1. Configure credentials (no secrets in source)
 export CREDIT_DB_USER=root
 export CREDIT_DB_PASSWORD=yourpassword
 export CREDIT_DB_HOST=localhost
 export CREDIT_DB_NAME=Credit_Risk_Project
 
-# 2. Load the CSV into MySQL
-python etl.py
-
-# 3. Train (reads from MySQL)
-python train_model.py
+python etl.py            # load the CSV into MySQL
+python train_model.py    # train (reads from MySQL)
 ```
 
-### Option B - no database (CSV fallback)
+### Option B — no database (CSV fallback)
 
 ```bash
 python train_model.py --source csv
@@ -91,30 +89,27 @@ python train_model.py --source csv
 streamlit run app.py
 ```
 
+The app loads the committed model, so it needs no database. Enter an
+applicant's details and it returns the rejection probability, an
+APPROVE / DECLINE decision at the cost-tuned threshold, and the factors that
+drove it.
+
 ---
 
-## Indian lending context
+## Using a different dataset
 
-`generate_indian_dataset.py` produces a dataset framed around Indian lending -
-CIBIL score, monthly income (INR), EMIs, employment type, city tier - to
-demonstrate domain relevance to Indian BFSI recruiters:
+The pipeline auto-detects numeric vs. categorical columns, so any tabular
+credit dataset works:
 
 ```bash
-python generate_indian_dataset.py
-python train_model.py --source csv --csv indian_credit_data.csv
+python train_model.py --source csv --csv YOURFILE.csv \
+    --target TARGET_COLUMN --positive-label RISKY_VALUE
 ```
-
-> **Honesty note.** `indian_credit_data.csv` is **synthetic** - generated from
-> hand-coded relationships, not real borrowers. Use it to demonstrate
-> *methodology*, not as evidence of real-world predictive power. For a genuine
-> differentiator, drop in real data (CMIE Prowess, RBI/CIBIL public aggregates,
-> or a Kaggle Indian lending dataset) using the same column schema and the same
-> commands. Never present synthetic results as real findings.
 
 ---
 
 ## Possible next steps
 
-- Calibrated probabilities (`CalibratedClassifierCV`) for reliable risk scoring.
-- Reject-inference / survival framing for through-the-door applicants.
-- Swap in real Indian data and re-benchmark.
+- Calibrated probabilities (`CalibratedClassifierCV`) for reliable scoring.
+- Validate on a dataset with genuine default labels (not just approval
+  decisions) to test real predictive power.
