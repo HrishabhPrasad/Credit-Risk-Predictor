@@ -2,7 +2,7 @@
 
 An **explainable loan-eligibility predictor** for the Indian lending context: enter an applicant's CIBIL score, income and assets, and get an **Approve / Decline** decision *with the reasons behind it.*
 
-🔗 **Live demo:** _add your Streamlit URL here_  ·  **Stack:** Python · scikit-learn · SHAP · MySQL · Streamlit
+🔗 **Live demo:** https://credit-risk-predictor-dashboard.streamlit.app/  ·  **Stack:** Python · scikit-learn · SHAP · MySQL · Streamlit
 
 ---
 
